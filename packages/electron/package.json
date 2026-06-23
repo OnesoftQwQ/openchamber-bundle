@@ -3,7 +3,11 @@
   "version": "1.13.2",
   "private": true,
   "description": "Electron desktop runtime for OpenChamber",
-  "author": "OpenChamber",
+  "homepage": "https://github.com/openchamber/openchamber",
+  "author": {
+    "name": "OpenChamber",
+    "email": "hello@openchamber.dev"
+  },
   "type": "module",
   "main": "./dist-bundle/main.mjs",
   "dependencies": {
@@ -88,30 +92,14 @@
     "linux": {
       "icon": "resources/icons",
       "target": [
-        "rpm",
+        {
+          "target": "rpm",
+          "arch": ["x64"]
+        },
         "tar.gz"
       ],
       "category": "Development",
-      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
-      "rpm": {
-        "fpm": ["--rpm-rpmbuild-define", "_build_id_links none"],
-        "depends": [
-          "libXScrnSaver",
-          "libnotify",
-          "nss",
-          "nspr",
-          "atk",
-          "at-spi2-atk",
-          "cups-libs",
-          "libXcomposite",
-          "libXcursor",
-          "libXdamage",
-          "libXrandr",
-          "libXtst",
-          "gtk3",
-          "xdg-utils"
-        ]
-      }
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
     },
     "win": {
       "icon": "resources/icons/icon.ico",
