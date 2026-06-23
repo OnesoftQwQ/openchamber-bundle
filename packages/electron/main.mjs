@@ -1167,6 +1167,22 @@ const spawnLocalServer = async () => {
   } else {
     delete process.env.OPENCHAMBER_UI_PASSWORD;
   }
+  // Point OPENCODE_BINARY at the binary bundled via extraResources so the
+  // web server lifecycle finds it without any user configuration.
+  const opencodeExe = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
+  const bundledOpencode = path.join(resourceRoot(), 'opencode-binary', opencodeExe);
+  if (!process.env.OPENCODE_BINARY) {
+    try {
+      const st = fs.statSync(bundledOpencode);
+      if (st.isFile()) {
+        process.env.OPENCODE_BINARY = bundledOpencode;
+        log.info(`[desktop] Using bundled opencode: ${bundledOpencode}`);
+      }
+    } catch {
+      log.warn(`[desktop] Bundled opencode not found at ${bundledOpencode}; will search PATH`);
+    }
+  }
+
   process.env.OPENCHAMBER_SKIP_API_COMPRESSION = process.env.OPENCHAMBER_SKIP_API_COMPRESSION || 'true';
   process.env.NO_PROXY = process.env.NO_PROXY || 'localhost,127.0.0.1';
   process.env.no_proxy = process.env.no_proxy || 'localhost,127.0.0.1';
