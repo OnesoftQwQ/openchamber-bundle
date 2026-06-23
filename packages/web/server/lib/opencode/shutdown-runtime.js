@@ -1,6 +1,12 @@
+/**
+ * shutdown-runtime.js — graceful shutdown (bundled subprocess).
+ *
+ * Route B simplification: no port killing, no lsof, no binary path cleanup.
+ * The managed opencode process is simply sent SIGTERM via its close() handle.
+ */
 export const createGracefulShutdownRuntime = (dependencies) => {
   const {
-    process,
+    process: nodeProcess,
     shutdownTimeoutMs,
     getExitOnShutdown,
     getIsShuttingDown,
@@ -15,12 +21,8 @@ export const createGracefulShutdownRuntime = (dependencies) => {
     setTerminalRuntime,
     getMessageStreamRuntime,
     setMessageStreamRuntime,
-    shouldSkipOpenCodeStop,
-    getOpenCodePort,
     getOpenCodeProcess,
     setOpenCodeProcess,
-    killProcessOnPort,
-    waitForPortRelease,
     getServer,
     getUiAuthController,
     setUiAuthController,
@@ -37,59 +39,41 @@ export const createGracefulShutdownRuntime = (dependencies) => {
     setIsShuttingDown(true);
     syncToHmrState();
     console.log('Starting graceful shutdown...');
-    const exitProcess = typeof options.exitProcess === 'boolean' ? options.exitProcess : getExitOnShutdown();
+    const exitProcess = typeof options.exitProcess === 'boolean'
+      ? options.exitProcess
+      : getExitOnShutdown();
 
+    // 1. Stop runtime services
     openCodeWatcherRuntime.stop();
     sessionRuntime.dispose();
     scheduledTasksRuntime?.stop?.();
 
     const healthCheckInterval = getHealthCheckInterval();
-    if (healthCheckInterval) {
-      clearHealthCheckInterval(healthCheckInterval);
-    }
+    if (healthCheckInterval) clearHealthCheckInterval(healthCheckInterval);
 
     const terminalRuntime = getTerminalRuntime();
     if (terminalRuntime) {
-      try {
-        await terminalRuntime.shutdown();
-      } catch {
-      } finally {
-        setTerminalRuntime(null);
-      }
+      try { await terminalRuntime.shutdown(); } catch { /* ok */ }
+      setTerminalRuntime(null);
     }
 
     const messageStreamRuntime = getMessageStreamRuntime();
     if (messageStreamRuntime) {
-      try {
-        await messageStreamRuntime.close();
-      } catch {
-      } finally {
-        setMessageStreamRuntime(null);
-      }
+      try { await messageStreamRuntime.close(); } catch { /* ok */ }
+      setMessageStreamRuntime(null);
     }
 
-    if (!shouldSkipOpenCodeStop()) {
-      const portToKill = getOpenCodePort();
-      const openCodeProcess = getOpenCodeProcess();
-
-      if (openCodeProcess) {
-        console.log('Stopping OpenCode process...');
-        try {
-          await openCodeProcess.close();
-        } catch (error) {
-          console.warn('Error closing OpenCode process:', error);
-        }
-        setOpenCodeProcess(null);
+    // 2. Stop managed OpenCode process (if any)
+    const openCodeProcess = getOpenCodeProcess();
+    if (openCodeProcess) {
+      console.log('Stopping bundled OpenCode process...');
+      try { await openCodeProcess.close(); } catch (error) {
+        console.warn('Error closing OpenCode process:', error);
       }
-
-      killProcessOnPort(portToKill);
-      if (!(await waitForPortRelease(portToKill, 5000))) {
-        console.warn(`Timed out waiting for OpenCode port ${portToKill} to be released during shutdown`);
-      }
-    } else {
-      console.log('Skipping OpenCode shutdown (external server)');
+      setOpenCodeProcess(null);
     }
 
+    // 3. Close HTTP server
     const server = getServer();
     if (server) {
       let closeTimeout = null;
@@ -103,24 +87,24 @@ export const createGracefulShutdownRuntime = (dependencies) => {
           }),
           new Promise((resolve) => {
             closeTimeout = setTimeout(() => {
-              console.warn('Server close timeout reached, forcing shutdown');
+              console.warn('Server close timeout, forcing shutdown');
               resolve();
             }, shutdownTimeoutMs);
           }),
         ]);
       } finally {
-        if (closeTimeout) {
-          clearTimeout(closeTimeout);
-        }
+        if (closeTimeout) clearTimeout(closeTimeout);
       }
     }
 
+    // 4. Dispose UI auth
     const uiAuthController = getUiAuthController();
     if (uiAuthController) {
       uiAuthController.dispose();
       setUiAuthController(null);
     }
 
+    // 5. Stop tunnels
     const activeTunnelController = getActiveTunnelController();
     if (activeTunnelController) {
       console.log('Stopping active tunnel...');
@@ -130,9 +114,7 @@ export const createGracefulShutdownRuntime = (dependencies) => {
     }
 
     console.log('Graceful shutdown complete');
-    if (exitProcess) {
-      process.exit(0);
-    }
+    if (exitProcess) nodeProcess.exit(0);
   };
 
   const gracefulShutdown = (options = {}) => {
@@ -141,7 +123,5 @@ export const createGracefulShutdownRuntime = (dependencies) => {
     return shutdownPromise;
   };
 
-  return {
-    gracefulShutdown,
-  };
+  return { gracefulShutdown };
 };

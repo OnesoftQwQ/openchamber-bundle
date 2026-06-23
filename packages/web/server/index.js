@@ -901,25 +901,17 @@ const openCodeLifecycleRuntime = createOpenCodeLifecycleRuntime({
     ENV_EFFECTIVE_PORT,
     ENV_CONFIGURED_OPENCODE_HOSTNAME,
     ENV_SKIP_OPENCODE_START,
+    OPENCODE_SERVER_PASSWORD: process.env.OPENCODE_SERVER_PASSWORD,
   },
   syncToHmrState,
-  syncFromHmrState,
   getOpenCodeAuthHeaders,
   buildOpenCodeUrl,
   waitForReady,
   normalizeApiPrefix,
-  applyOpencodeBinaryFromSettings,
-  ensureOpencodeCliEnv,
-  ensureLocalOpenCodeServerPassword,
-  resolveManagedOpenCodeLaunchSpec,
   setOpenCodePort,
   setDetectedOpenCodeApiPrefix,
   setupProxy: (...args) => setupProxy(...args),
   ensureOpenCodeApiPrefix,
-  clearResolvedOpenCodeBinary,
-  buildAugmentedPath,
-  buildManagedOpenCodePath,
-  getManagedOpenCodeShellEnvSnapshot: getLoginShellEnvSnapshot,
   getActiveSessionCount,
 });
 
@@ -927,8 +919,10 @@ const restartOpenCode = (...args) => openCodeLifecycleRuntime.restartOpenCode(..
 const waitForOpenCodeReady = (...args) => openCodeLifecycleRuntime.waitForOpenCodeReady(...args);
 const waitForAgentPresence = (...args) => openCodeLifecycleRuntime.waitForAgentPresence(...args);
 const refreshOpenCodeAfterConfigChange = (...args) => openCodeLifecycleRuntime.refreshOpenCodeAfterConfigChange(...args);
-const startHealthMonitoring = () => openCodeLifecycleRuntime.startHealthMonitoring(HEALTH_CHECK_INTERVAL);
-const triggerHealthCheck = () => openCodeLifecycleRuntime.triggerHealthCheck();
+// Health monitoring removed in Route B — bundled process is managed via
+// its ChildProcess handle; if it dies the proxy layer detects the failure
+// and the watcher reconnects.
+const triggerHealthCheck = async () => {}; // no-op for route B
 const scheduledTasksRuntime = createScheduledTasksRuntime({
   projectConfigRuntime,
   listProjects: async () => {
@@ -974,17 +968,12 @@ const ensureGlobalWatcherStarted = async () => {
 const bootstrapOpenCodeAtStartup = async (...args) => {
   await openCodeLifecycleRuntime.bootstrapOpenCodeAtStartup(...args);
   scheduleOpenCodeApiDetection();
-  if (openCodeLifecycleState.openCodeProcess && !openCodeLifecycleState.isExternalOpenCode) {
-    startHealthMonitoring();
-  }
   if (ENV_DESKTOP_NOTIFY) {
     void ensureGlobalWatcherStarted().catch((error) => {
       console.warn(`Global event watcher startup failed: ${error?.message || error}`);
     });
   }
 };
-const killProcessOnPort = (...args) => openCodeLifecycleRuntime.killProcessOnPort(...args);
-const waitForPortRelease = (...args) => openCodeLifecycleRuntime.waitForPortRelease(...args);
 
 const fetchAgentsSnapshot = (...args) => serverUtilsRuntime.fetchAgentsSnapshot(...args);
 const fetchProvidersSnapshot = (...args) => serverUtilsRuntime.fetchProvidersSnapshot(...args);
@@ -1011,14 +1000,10 @@ const gracefulShutdownRuntime = createGracefulShutdownRuntime({
   setMessageStreamRuntime: (value) => {
     messageStreamRuntime = value;
   },
-  shouldSkipOpenCodeStop: () => ENV_SKIP_OPENCODE_START || isExternalOpenCode,
-  getOpenCodePort: () => openCodePort,
   getOpenCodeProcess: () => openCodeProcess,
   setOpenCodeProcess: (value) => {
     openCodeProcess = value;
   },
-  killProcessOnPort,
-  waitForPortRelease,
   getServer: () => server,
   getUiAuthController: () => uiAuthController,
   setUiAuthController: (value) => {
