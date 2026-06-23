@@ -85,6 +85,34 @@
         "zip"
       ]
     },
+    "linux": {
+      "icon": "resources/icons",
+      "target": [
+        "rpm",
+        "tar.gz"
+      ],
+      "category": "Development",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
+      "rpm": {
+        "fpm": ["--rpm-rpmbuild-define", "_build_id_links none"],
+        "depends": [
+          "libXScrnSaver",
+          "libnotify",
+          "nss",
+          "nspr",
+          "atk",
+          "at-spi2-atk",
+          "cups-libs",
+          "libXcomposite",
+          "libXcursor",
+          "libXdamage",
+          "libXrandr",
+          "libXtst",
+          "gtk3",
+          "xdg-utils"
+        ]
+      }
+    },
     "win": {
       "icon": "resources/icons/icon.ico",
       "target": [

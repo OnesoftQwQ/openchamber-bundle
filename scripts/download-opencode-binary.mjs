@@ -11,10 +11,12 @@
  */
 
 import { chmodSync, createWriteStream, existsSync, mkdirSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, unlink } from "node:fs/promises";
 import { platform, arch } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { Readable } from "node:stream";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -32,13 +34,14 @@ const VERSION_FILE = join(TARGET_DIR, "version.txt");
 
 // Map Node's process.platform + process.arch to GitHub release asset names.
 // OpenCode publishes prebuilt binaries via GitHub releases.
+// GitHub releases publish assets as .tar.gz archives (non-Windows) or .zip
 const ASSET_MAP = {
-  "linux-x64": "opencode-linux-x64",
-  "linux-arm64": "opencode-linux-arm64",
-  "darwin-x64": "opencode-darwin-x64",
-  "darwin-arm64": "opencode-darwin-arm64",
-  "win32-x64": "opencode-windows-x64.exe",
-  "win32-arm64": "opencode-windows-arm64.exe",
+  "linux-x64":      { name: "opencode-linux-x64-baseline.tar.gz", extract: true },
+  "linux-arm64":    { name: "opencode-linux-arm64.tar.gz",       extract: true },
+  "darwin-x64":     { name: "opencode-darwin-x64.zip",           extract: true },
+  "darwin-arm64":   { name: "opencode-darwin-arm64.zip",         extract: true },
+  "win32-x64":      { name: "opencode-windows-x64-baseline.zip", extract: true },
+  "win32-arm64":    { name: "opencode-windows-arm64.zip",        extract: true },
 };
 
 const GITHUB_REPO = "anomalyco/opencode";
@@ -56,15 +59,15 @@ const parseArgs = () => {
   return { version };
 };
 
-const getPlatformAssetName = () => {
+const getPlatformAsset = () => {
   const key = `${platform()}-${arch()}`;
-  const name = ASSET_MAP[key];
-  if (!name) {
+  const config = ASSET_MAP[key];
+  if (!config) {
     throw new Error(
       `Unsupported platform: ${key}. Supported: ${Object.keys(ASSET_MAP).join(", ")}`
     );
   }
-  return name;
+  return { ...config, key };
 };
 
 const getLatestRelease = async () => {
@@ -125,74 +128,117 @@ const downloadAsset = async (url, destPath) => {
 
   mkdirSync(dirname(destPath), { recursive: true });
 
+  const writer = createWriteStream(destPath);
+  const reader = Readable.fromWeb(response.body);
+
+  if (total > 0) {
+    reader.on("data", (chunk) => {
+      downloaded += chunk.length;
+      const pct = ((downloaded / total) * 100).toFixed(1);
+      process.stdout.write(`\r  ${pct}% (${(downloaded / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB)`);
+    });
+  }
+
   return new Promise((resolve, reject) => {
-    const stream = createWriteStream(destPath);
-    response.body.pipe(stream);
-
-    if (total > 0) {
-      response.body.on("data", (chunk) => {
-        downloaded += chunk.length;
-        const pct = ((downloaded / total) * 100).toFixed(1);
-        process.stdout.write(`\r  ${pct}% (${(downloaded / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB)`);
-      });
-    }
-
-    stream.on("finish", () => {
+    writer.on("finish", () => {
       process.stdout.write("\n");
       resolve();
     });
-    stream.on("error", reject);
+    writer.on("error", reject);
+    reader.pipe(writer);
   });
+};
+
+const extractArchive = (archivePath, destDir, format) => {
+  mkdirSync(destDir, { recursive: true });
+
+  if (format === 'zip') {
+    const result = spawnSync('unzip', ['-o', archivePath, '-d', destDir], {
+      stdio: 'inherit',
+    });
+    if (result.status !== 0) throw new Error(`unzip failed with code ${result.status}`);
+    return;
+  }
+
+  // tar.gz
+  const result = spawnSync('tar', ['xzf', archivePath, '-C', destDir], {
+    stdio: 'inherit',
+  });
+  if (result.status !== 0) throw new Error(`tar extraction failed with code ${result.status}`);
 };
 
 const main = async () => {
   const { version: requestedVersion } = parseArgs();
-  const assetName = getPlatformAssetName();
-  const binaryName = platform() === "win32" ? "opencode.exe" : "opencode";
+  const platformAsset = getPlatformAsset();
+  const binaryName = platform() === 'win32' ? 'opencode.exe' : 'opencode';
+  const archiveFormat = platformAsset.name.endsWith('.zip') ? 'zip' : 'tar.gz';
 
-  console.log(`Target: ${assetName}`);
-  console.log(`Output: ${BINARY_PATH}`);
+  console.log(`Target asset: ${platformAsset.name}`);
+  console.log(`Output dir: ${TARGET_DIR}`);
 
-  // Check if we already have this version
+  // Check cache
   if (existsSync(BINARY_PATH) && existsSync(VERSION_FILE)) {
     try {
-      const currentVersion = (await readFile(VERSION_FILE, "utf-8")).trim();
+      const currentVersion = (await readFile(VERSION_FILE, 'utf-8')).trim();
       if (!requestedVersion || currentVersion === requestedVersion) {
         console.log(`Binary already up-to-date (${currentVersion}), skipping download.`);
         return { binaryPath: BINARY_PATH, version: currentVersion };
       }
     } catch {
-      // Invalid version file, re-download
+      // re-download
     }
   }
 
-  // Fetch release info
+  // Fetch release
   let release;
   if (requestedVersion) {
     console.log(`Fetching release ${requestedVersion}...`);
     release = await getReleaseByTag(requestedVersion);
   } else {
-    console.log("Fetching latest release...");
+    console.log('Fetching latest release...');
     release = await getLatestRelease();
   }
 
-  const asset = findAsset(release.assets, assetName);
-  console.log(`Found asset: ${asset.name} (${(asset.size / 1024 / 1024).toFixed(1)} MB)`);
+  const ghAsset = findAsset(release.assets, platformAsset.name);
+  const archivePath = join(TARGET_DIR, platformAsset.name);
+  console.log(`Downloading ${ghAsset.name} (${(ghAsset.size / 1024 / 1024).toFixed(1)} MB)...`);
 
-  // Download
-  await downloadAsset(asset.browser_download_url, BINARY_PATH);
+  await downloadAsset(ghAsset.browser_download_url, archivePath);
 
-  // Make executable
-  try {
-    const { chmodSync } = await import("node:fs");
-    chmodSync(BINARY_PATH, 0o755);
-  } catch {
-    // ignore on Windows
+  // Extract archive
+  console.log('Extracting...');
+  extractArchive(archivePath, TARGET_DIR, archiveFormat);
+
+  // The binary is inside the archive — ensure it's at BINARY_PATH.
+  // Archives typically contain a single binary or a directory with the binary.
+  if (!existsSync(BINARY_PATH)) {
+    const { readdirSync, renameSync } = await import('node:fs');
+    const findBinary = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const found = findBinary(full);
+          if (found) return found;
+        } else if (entry.name === binaryName) {
+          return full;
+        }
+      }
+      return null;
+    };
+    const found = findBinary(TARGET_DIR);
+    if (found && found !== BINARY_PATH) {
+      renameSync(found, BINARY_PATH);
+    }
   }
 
-  // Write version file
-  await writeFile(VERSION_FILE, release.tag);
+  // Clean up archive
+  try { await unlink(archivePath); } catch { /* ok */ }
 
+  // Make executable
+  try { chmodSync(BINARY_PATH, 0o755); } catch { /* ignore on Windows */ }
+
+  // Write version
+  await writeFile(VERSION_FILE, release.tag);
   console.log(`\nDone! Bundled opencode ${release.tag} at ${BINARY_PATH}`);
   return { binaryPath: BINARY_PATH, version: release.tag };
 };
