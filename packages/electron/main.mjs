@@ -3129,8 +3129,36 @@ const buildLinuxInstalledApps = async (apps) => {
   }
   const appIdByName = (name) => {
     const lower = name.toLowerCase();
+    // First try desktop file base name match (e.g. 'code' → vscode)
     for (const [desktop, appId] of LINUX_APP_ID_BY_DESKTOP) {
       if (desktop.toLowerCase() === lower) return { appId, desktopBase: desktop };
+    }
+    // Then try display name match (e.g. 'Visual Studio Code' → vscode → 'code')
+    const nameToDesktop = {
+      'visual studio code': 'code',
+      'cursor': 'cursor',
+      'vscodium': 'vscodium',
+      'windsurf': 'windsurf',
+      'zed': 'zed',
+      'sublime text': 'sublime_text',
+      'intellij idea': 'idea',
+      'pycharm': 'pycharm',
+      'webstorm': 'webstorm',
+      'phpstorm': 'phpstorm',
+      'rider': 'rider',
+      'rustrover': 'rustrover',
+      'android studio': 'android-studio',
+      'eclipse': 'eclipse',
+      'firefox': 'firefox',
+      'google chrome': 'google-chrome',
+      'chromium': 'chromium-browser',
+      'ghostty': 'ghostty',
+    };
+    const desktopBase = nameToDesktop[lower];
+    if (desktopBase) {
+      for (const [desktop, appId] of LINUX_APP_ID_BY_DESKTOP) {
+        if (desktop === desktopBase) return { appId, desktopBase };
+      }
     }
     return null;
   };
