@@ -3205,16 +3205,74 @@ const buildLinuxInstalledApps = async (apps) => {
     }
     const mapping = appIdByName(name);
     if (!mapping) continue;
-    const hasDesktopFile = desktopFiles.some(
+    const matchedDf = desktopFiles.find(
       (df) => df.baseName.toLowerCase() === mapping.desktopBase.toLowerCase()
           || df.displayName.toLowerCase() === name.toLowerCase()
     );
     const hasCli = checkCli(mapping.appId);
-    if (hasDesktopFile || hasCli) {
-      results.push({ name, iconDataUrl: null });
+    if (matchedDf || hasCli) {
+      let iconDataUrl = null;
+      // Try to extract icon from the .desktop file
+      if (matchedDf) {
+        try {
+          const content = await fsp.readFile(matchedDf.fullPath, 'utf8');
+          const iconMatch = content.match(/^Icon\s*=\s*(.+)$/m);
+          if (iconMatch) {
+            iconDataUrl = await resolveLinuxIcon(iconMatch[1].trim());
+          }
+        } catch {}
+      }
+      results.push({ name, iconDataUrl });
     }
   }
   return results;
+};
+
+const LINUX_ICON_DIRS = [
+  path.join(os.homedir(), '.local', 'share', 'icons'),
+  '/usr/share/icons',
+  '/usr/share/pixmaps',
+];
+
+const resolveLinuxIcon = async (iconName) => {
+  // If it's an absolute path, try it directly
+  if (path.isAbsolute(iconName) && fs.existsSync(iconName)) {
+    return await iconFileToDataUrl(iconName);
+  }
+  // Search theme directories: hicolor/<size>/apps/<iconName>.png first
+  for (const baseDir of LINUX_ICON_DIRS) {
+    for (const sizeDir of ['128x128', '64x64', '48x48', '32x32', '256x256']) {
+      const candidates = [
+        path.join(baseDir, 'hicolor', sizeDir, 'apps', `${iconName}.png`),
+        path.join(baseDir, 'hicolor', sizeDir, 'apps', `${iconName}.svg`),
+        path.join(baseDir, 'hicolor', sizeDir, 'mimetypes', `${iconName}.png`),
+      ];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+          const dataUrl = await iconFileToDataUrl(candidate);
+          if (dataUrl) return dataUrl;
+        }
+      }
+    }
+    // Also try /usr/share/pixmaps directly
+    const pixmap = path.join(baseDir, `${iconName}.png`);
+    if (fs.existsSync(pixmap)) {
+      const dataUrl = await iconFileToDataUrl(pixmap);
+      if (dataUrl) return dataUrl;
+    }
+  }
+  return null;
+};
+
+const iconFileToDataUrl = async (filePath) => {
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = ext === '.svg' ? 'image/svg+xml' : 'image/png';
+    const buf = await fsp.readFile(filePath);
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch {
+    return null;
+  }
 };
 
 const quoteWindowsCommandArg = (value) => `"${String(value).replace(/"/g, '""')}"`;
