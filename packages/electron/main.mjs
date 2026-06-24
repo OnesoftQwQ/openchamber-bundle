@@ -3120,7 +3120,14 @@ const buildLinuxInstalledApps = async (apps) => {
       for (const entry of entries) {
         if (entry.endsWith('.desktop')) {
           const baseName = entry.slice(0, -8);
-          desktopFiles.push({ baseName, fullPath: path.join(dir, entry) });
+          // Also read the Name= field from the desktop file for matching
+          let displayName = '';
+          try {
+            const content = await fsp.readFile(path.join(dir, entry), 'utf8');
+            const match = content.match(/^Name\s*=\s*(.+)$/m);
+            if (match) displayName = match[1].trim();
+          } catch {}
+          desktopFiles.push({ baseName, fullPath: path.join(dir, entry), displayName });
         }
       }
     } catch {
@@ -3165,12 +3172,26 @@ const buildLinuxInstalledApps = async (apps) => {
   const checkCli = (appId) => {
     const cli = LINUX_CLI_BY_APP_ID[appId];
     if (!cli) return false;
-    try {
-      const result = spawnSync('which', [cli], { encoding: 'utf8', stdio: 'pipe' });
-      return result.status === 0 && result.stdout.trim().length > 0;
-    } catch {
-      return false;
+    // Check common locations + PATH rather than relying on `which`
+    const candidates = [
+      cli,
+      `/usr/bin/${cli}`,
+      `/usr/local/bin/${cli}`,
+      path.join(os.homedir(), '.local', 'bin', `${cli}`),
+    ];
+    for (const candidate of candidates) {
+      if (path.isAbsolute(candidate)) {
+        if (fs.existsSync(candidate)) return true;
+      } else {
+        // Check PATH
+        const pathDirs = (process.env.PATH || '').split(':');
+        for (const dir of pathDirs) {
+          const full = path.join(dir, candidate);
+          if (fs.existsSync(full)) return true;
+        }
+      }
     }
+    return false;
   };
   const results = [];
   for (const name of names) {
@@ -3186,6 +3207,7 @@ const buildLinuxInstalledApps = async (apps) => {
     if (!mapping) continue;
     const hasDesktopFile = desktopFiles.some(
       (df) => df.baseName.toLowerCase() === mapping.desktopBase.toLowerCase()
+          || df.displayName.toLowerCase() === name.toLowerCase()
     );
     const hasCli = checkCli(mapping.appId);
     if (hasDesktopFile || hasCli) {
@@ -3605,19 +3627,31 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       const hasCache = Boolean(cache);
       const isCacheStale = !cache || (now - Number(cache.updatedAt || 0)) > INSTALLED_APPS_CACHE_TTL_SECS;
       const refresh = async () => {
-        const apps = process.platform === 'win32'
-          ? await buildWindowsInstalledApps(args.apps)
-          : process.platform === 'linux'
-          ? await buildLinuxInstalledApps(Array.isArray(args.apps) ? args.apps : [])
-          : await buildInstalledApps(Array.isArray(args.apps) ? args.apps : []);
-        await fsp.mkdir(path.dirname(cachePath), { recursive: true });
-        await fsp.writeFile(cachePath, JSON.stringify({ updatedAt: now, apps }, null, 2));
-        emitToAllWindows('openchamber:installed-apps-updated', apps);
+        try {
+          const apps = process.platform === 'win32'
+            ? await buildWindowsInstalledApps(args.apps)
+            : process.platform === 'linux'
+            ? await buildLinuxInstalledApps(Array.isArray(args.apps) ? args.apps : [])
+            : await buildInstalledApps(Array.isArray(args.apps) ? args.apps : []);
+          await fsp.mkdir(path.dirname(cachePath), { recursive: true });
+          await fsp.writeFile(cachePath, JSON.stringify({ updatedAt: now, apps }, null, 2));
+          emitToAllWindows('openchamber:installed-apps-updated', apps);
+        } catch (error) {
+          console.warn('[desktop] Failed to refresh installed apps:', error);
+        }
       };
       if (process.platform !== 'darwin' && process.platform !== 'win32' && process.platform !== 'linux') {
         return { apps: [], hasCache: false, isCacheStale: false };
       }
-      if (!hasCache || isCacheStale || args.force === true) {
+      if (!hasCache) {
+        await refresh();
+        const updated = await fsp.readFile(cachePath, 'utf8').then((raw) => {
+          try { return JSON.parse(raw); } catch { return null; }
+        }).catch(() => null);
+        if (updated && Array.isArray(updated.apps)) {
+          return { apps: updated.apps, hasCache: true, isCacheStale: false };
+        }
+      } else if (isCacheStale) {
         void refresh();
       }
       return { apps: cachedApps, hasCache, isCacheStale };
