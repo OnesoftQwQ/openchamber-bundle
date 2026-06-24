@@ -823,9 +823,12 @@ const buildLocalUrl = (port) => `http://127.0.0.1:${port}`;
 const resourceRoot = () => isDev ? path.join(__dirname, 'resources') : process.resourcesPath;
 const resolveWebDistDir = () => path.join(resourceRoot(), 'web-dist');
 const shouldUsePackagedUi = () => {
-  if (process.env.OPENCHAMBER_ELECTRON_LOAD_SERVER_UI === '1') return false;
-  if (process.env.OPENCHAMBER_ELECTRON_USE_BUNDLED_UI === '1') return true;
-  return app.isPackaged;
+  // Route B: always load UI from the in-process HTTP server instead of the
+  // openchamber-ui:// custom protocol.  The custom protocol relies on
+  // Electron's protocol.handle() which can fail on Wayland/KDE and cause
+  // the OS to try opening the URL via KIO, producing a "cannot read file"
+  // error.  The HTTP server is always running anyway.
+  return false;
 };
 const packagedUiOrigin = () => `${UI_PROTOCOL}://app`;
 const buildPackagedUiUrl = (pathname = '/index.html') => new URL(pathname, `${packagedUiOrigin()}/`).toString();
