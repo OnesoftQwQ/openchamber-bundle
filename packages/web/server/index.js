@@ -908,6 +908,7 @@ const openCodeLifecycleRuntime = createOpenCodeLifecycleRuntime({
   buildOpenCodeUrl,
   waitForReady,
   normalizeApiPrefix,
+  ensureLocalOpenCodeServerPassword,
   setOpenCodePort,
   setDetectedOpenCodeApiPrefix,
   setupProxy: (...args) => setupProxy(...args),

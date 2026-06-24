@@ -56,6 +56,7 @@ export const createOpenCodeLifecycleRuntime = (deps) => {
     buildOpenCodeUrl,
     waitForReady,
     normalizeApiPrefix,
+    ensureLocalOpenCodeServerPassword,
     setOpenCodePort,
     setDetectedOpenCodeApiPrefix,
     setupProxy,
@@ -267,16 +268,16 @@ export const createOpenCodeLifecycleRuntime = (deps) => {
       ? desiredPort
       : await allocatePort(env.ENV_CONFIGURED_OPENCODE_HOSTNAME);
     const hostname = env.ENV_CONFIGURED_OPENCODE_HOSTNAME || '127.0.0.1';
-    const password = env.OPENCODE_SERVER_PASSWORD || '';
 
-    // Generate a random password if none set
-    const effectivePassword = password || randomBytes(32).toString('base64');
+    // Ensure the password is synced to the auth state runtime so health
+    // checks and API proxy calls use the same credentials as the server.
+    const password = await ensureLocalOpenCodeServerPassword({ rotateManaged: true });
 
     const instance = await spawnServer({
       hostname,
       port: spawnPort,
       cwd: state.openCodeWorkingDirectory,
-      password: effectivePassword,
+      password,
     });
 
     const parsed = new URL(instance.url);
