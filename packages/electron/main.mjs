@@ -3063,6 +3063,110 @@ const buildLinuxOpenFileSpecs = ({ filePath, appId, appName }) => {
   return specs;
 };
 
+const LINUX_CLI_BY_APP_ID = CLI_BY_APP_ID;
+const LINUX_DESKTOP_FILE_DIRS = [
+  '/usr/share/applications',
+  '/usr/local/share/applications',
+  path.join(os.homedir(), '.local', 'share', 'applications'),
+];
+const LINUX_APP_ID_BY_DESKTOP = new Map([
+  ['code', 'vscode'],
+  ['vscode', 'vscode'],
+  ['visual-studio-code', 'vscode'],
+  ['cursor', 'cursor'],
+  ['vscodium', 'vscodium'],
+  ['windsurf', 'windsurf'],
+  ['zed', 'zed'],
+  ['org.gnome.Terminal', 'terminal'],
+  ['org.kde.konsole', 'terminal'],
+  ['terminal', 'terminal'],
+  ['xfce4-terminal', 'terminal'],
+  ['alacritty', 'terminal'],
+  ['kitty', 'terminal'],
+  ['ghostty', 'ghostty'],
+  ['com.mitchellh.ghostty', 'ghostty'],
+  ['sublime_text', 'sublime-text'],
+  ['subl', 'sublime-text'],
+  ['sublime-text', 'sublime-text'],
+  ['jetbrains-idea', 'intellij'],
+  ['intellij-idea', 'intellij'],
+  ['idea', 'intellij'],
+  ['jetbrains-pycharm', 'pycharm'],
+  ['pycharm', 'pycharm'],
+  ['jetbrains-webstorm', 'webstorm'],
+  ['webstorm', 'webstorm'],
+  ['jetbrains-phpstorm', 'phpstorm'],
+  ['phpstorm', 'phpstorm'],
+  ['jetbrains-rider', 'rider'],
+  ['rider', 'rider'],
+  ['jetbrains-rustrover', 'rustrover'],
+  ['rustrover', 'rustrover'],
+  ['android-studio', 'android-studio'],
+  ['eclipse', 'eclipse'],
+  ['firefox', 'firefox'],
+  ['google-chrome', 'google-chrome'],
+  ['chromium', 'chromium'],
+  ['chromium-browser', 'chromium'],
+]);
+const buildLinuxInstalledApps = async (apps) => {
+  const seen = new Set();
+  const names = apps
+    .map((raw) => String(raw || '').trim())
+    .filter((raw) => raw && !seen.has(raw) && seen.add(raw));
+  const desktopFiles = [];
+  for (const dir of LINUX_DESKTOP_FILE_DIRS) {
+    try {
+      const entries = await fsp.readdir(dir);
+      for (const entry of entries) {
+        if (entry.endsWith('.desktop')) {
+          const baseName = entry.slice(0, -8);
+          desktopFiles.push({ baseName, fullPath: path.join(dir, entry) });
+        }
+      }
+    } catch {
+      // directory doesn't exist
+    }
+  }
+  const appIdByName = (name) => {
+    const lower = name.toLowerCase();
+    for (const [desktop, appId] of LINUX_APP_ID_BY_DESKTOP) {
+      if (desktop.toLowerCase() === lower) return { appId, desktopBase: desktop };
+    }
+    return null;
+  };
+  const checkCli = (appId) => {
+    const cli = LINUX_CLI_BY_APP_ID[appId];
+    if (!cli) return false;
+    try {
+      const result = spawnSync('which', [cli], { encoding: 'utf8', stdio: 'pipe' });
+      return result.status === 0 && result.stdout.trim().length > 0;
+    } catch {
+      return false;
+    }
+  };
+  const results = [];
+  for (const name of names) {
+    if (name === 'Finder' || name === 'finder') {
+      results.push({ name, iconDataUrl: null });
+      continue;
+    }
+    if (name === 'Terminal' || name === 'terminal') {
+      results.push({ name, iconDataUrl: null });
+      continue;
+    }
+    const mapping = appIdByName(name);
+    if (!mapping) continue;
+    const hasDesktopFile = desktopFiles.some(
+      (df) => df.baseName.toLowerCase() === mapping.desktopBase.toLowerCase()
+    );
+    const hasCli = checkCli(mapping.appId);
+    if (hasDesktopFile || hasCli) {
+      results.push({ name, iconDataUrl: null });
+    }
+  }
+  return results;
+};
+
 const quoteWindowsCommandArg = (value) => `"${String(value).replace(/"/g, '""')}"`;
 
 const resolveWindowsLaunchProgram = (program) => {
@@ -3490,132 +3594,6 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       }
       return { apps: cachedApps, hasCache, isCacheStale };
     }
-
-    const LINUX_CLI_BY_APP_ID = CLI_BY_APP_ID;
-
-const LINUX_DESKTOP_FILE_DIRS = [
-  '/usr/share/applications',
-  '/usr/local/share/applications',
-  path.join(os.homedir(), '.local', 'share', 'applications'),
-];
-
-// Map desktop file base names (without .desktop) to OpenChamber app IDs.
-// Also include display names so Name= lines in .desktop files are matched.
-const LINUX_APP_ID_BY_DESKTOP = new Map([
-  ['code', 'vscode'],
-  ['vscode', 'vscode'],
-  ['visual-studio-code', 'vscode'],
-  ['cursor', 'cursor'],
-  ['vscodium', 'vscodium'],
-  ['windsurf', 'windsurf'],
-  ['zed', 'zed'],
-  ['org.gnome.Terminal', 'terminal'],
-  ['org.kde.konsole', 'terminal'],
-  ['terminal', 'terminal'],
-  ['xfce4-terminal', 'terminal'],
-  ['alacritty', 'terminal'],
-  ['kitty', 'terminal'],
-  ['ghostty', 'ghostty'],
-  ['com.mitchellh.ghostty', 'ghostty'],
-  ['sublime_text', 'sublime-text'],
-  ['subl', 'sublime-text'],
-  ['sublime-text', 'sublime-text'],
-  ['jetbrains-idea', 'intellij'],
-  ['intellij-idea', 'intellij'],
-  ['idea', 'intellij'],
-  ['jetbrains-pycharm', 'pycharm'],
-  ['pycharm', 'pycharm'],
-  ['jetbrains-webstorm', 'webstorm'],
-  ['webstorm', 'webstorm'],
-  ['jetbrains-phpstorm', 'phpstorm'],
-  ['phpstorm', 'phpstorm'],
-  ['jetbrains-rider', 'rider'],
-  ['rider', 'rider'],
-  ['jetbrains-rustrover', 'rustrover'],
-  ['rustrover', 'rustrover'],
-  ['android-studio', 'android-studio'],
-  ['eclipse', 'eclipse'],
-  ['firefox', 'firefox'],
-  ['google-chrome', 'google-chrome'],
-  ['chromium', 'chromium'],
-  ['chromium-browser', 'chromium'],
-]);
-
-const buildLinuxInstalledApps = async (apps) => {
-  const seen = new Set();
-  const names = apps
-    .map((raw) => String(raw || '').trim())
-    .filter((raw) => raw && !seen.has(raw) && seen.add(raw));
-
-  // Gather desktop file names from all configured directories
-  const desktopFiles = [];
-  for (const dir of LINUX_DESKTOP_FILE_DIRS) {
-    try {
-      const entries = await fsp.readdir(dir);
-      for (const entry of entries) {
-        if (entry.endsWith('.desktop')) {
-          const baseName = entry.slice(0, -8);
-          desktopFiles.push({ baseName, fullPath: path.join(dir, entry) });
-        }
-      }
-    } catch {
-      // directory doesn't exist
-    }
-  }
-
-  // Build reverse-lookup: appName → set of matching desktop baseNames
-  const appIdByName = (name) => {
-    const lower = name.toLowerCase();
-    // Try exact match first
-    for (const [desktop, appId] of LINUX_APP_ID_BY_DESKTOP) {
-      if (desktop.toLowerCase() === lower) return { appId, desktopBase: desktop };
-    }
-    // Also try matching against desktop file Name= field
-    return null;
-  };
-
-  const checkCli = (appId) => {
-    const cli = LINUX_CLI_BY_APP_ID[appId];
-    if (!cli) return false;
-    try {
-      const result = spawnSync('which', [cli], { encoding: 'utf8', stdio: 'pipe' });
-      return result.status === 0 && result.stdout.trim().length > 0;
-    } catch {
-      return false;
-    }
-  };
-
-  const results = [];
-  for (const name of names) {
-    // Finder is always available
-    if (name === 'Finder' || name === 'finder') {
-      results.push({ name, iconDataUrl: null });
-      continue;
-    }
-    // Terminal is always available (any terminal emulator)
-    if (name === 'Terminal' || name === 'terminal') {
-      results.push({ name, iconDataUrl: null });
-      continue;
-    }
-
-    const mapping = appIdByName(name);
-    if (!mapping) continue;
-
-    // Check if the desktop file exists
-    const hasDesktopFile = desktopFiles.some(
-      (df) => df.baseName.toLowerCase() === mapping.desktopBase.toLowerCase()
-    );
-
-    // Also check CLI
-    const hasCli = checkCli(mapping.appId);
-
-    if (hasDesktopFile || hasCli) {
-      results.push({ name, iconDataUrl: null });
-    }
-  }
-
-  return results;
-};
 
     case 'desktop_hosts_get':
       return {
