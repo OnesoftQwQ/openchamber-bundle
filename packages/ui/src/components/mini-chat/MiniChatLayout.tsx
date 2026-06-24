@@ -71,7 +71,7 @@ const MiniChatHeader: React.FC<{ mode: MiniChatMode }> = ({ mode }) => {
   const hasMacTrafficLights = Number.isFinite(macosMajor) && macosMajor > 0;
   const isWindowsElectronDesktop = typeof window !== 'undefined'
     && Boolean(window.__OPENCHAMBER_ELECTRON__)
-    && window.__OPENCHAMBER_PLATFORM__ === 'win32';
+    && (window.__OPENCHAMBER_PLATFORM__ === 'win32' || window.__OPENCHAMBER_PLATFORM__ === 'linux');
   const macosHeaderSizeClass = hasMacTrafficLights
     ? macosMajor >= 26
       ? 'h-12'
