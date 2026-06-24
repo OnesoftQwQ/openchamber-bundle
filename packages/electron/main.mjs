@@ -3018,6 +3018,51 @@ const buildOpenFileSpecs = ({ filePath, appId, appName }) => {
   return specs;
 };
 
+const buildLinuxOpenProjectSpecs = ({ projectPath, appId, appName }) => {
+  if (appId === 'finder') {
+    return [{ program: 'xdg-open', args: [projectPath] }];
+  }
+
+  if (appId === 'terminal' || appId === 'ghostty') {
+    return [{ program: 'xdg-terminal', args: [projectPath] }];
+  }
+
+  const specs = [];
+
+  const cli = LINUX_CLI_BY_APP_ID[appId];
+  if (cli) {
+    specs.push({ program: cli, args: [projectPath] });
+  }
+
+  if (JETBRAINS_APP_IDS.has(appId)) {
+    specs.push({ program: path.join(os.homedir(), '.local', 'share', 'JetBrains', 'Toolbox', 'scripts', `${appName}.sh`), args: [projectPath] });
+  }
+
+  specs.push({ program: 'xdg-open', args: [projectPath] });
+  return specs;
+};
+
+const buildLinuxOpenFileSpecs = ({ filePath, appId, appName }) => {
+  if (appId === 'finder') {
+    return [{ program: 'xdg-open', args: [path.dirname(filePath)] }];
+  }
+
+  const parentDir = path.dirname(filePath);
+  if (appId === 'terminal' || appId === 'ghostty') {
+    return [{ program: 'xdg-terminal', args: [parentDir] }];
+  }
+
+  const specs = [];
+
+  const cli = LINUX_CLI_BY_APP_ID[appId];
+  if (cli) {
+    specs.push({ program: cli, args: [filePath] });
+  }
+
+  specs.push({ program: 'xdg-open', args: [filePath] });
+  return specs;
+};
+
 const quoteWindowsCommandArg = (value) => `"${String(value).replace(/"/g, '""')}"`;
 
 const resolveWindowsLaunchProgram = (program) => {
@@ -3337,8 +3382,12 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         runSpecChain(buildWindowsOpenProjectSpecs({ projectPath, appId, appName }), appName);
         return null;
       }
-      if (process.platform !== 'darwin') {
-        throw new Error('desktop_open_in_app is only supported on macOS and Windows');
+      if (process.platform !== 'darwin' && process.platform !== 'win32' && process.platform !== 'linux') {
+        throw new Error('desktop_open_in_app is only supported on macOS, Windows, and Linux');
+      }
+      if (process.platform === 'linux') {
+        runSpecChain(buildLinuxOpenProjectSpecs({ projectPath, appId, appName }), appName);
+        return null;
       }
       runSpecChain(buildOpenProjectSpecs({ projectPath, appId, appName }), appName);
       return null;
@@ -3355,8 +3404,12 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         runSpecChain(buildWindowsOpenFileSpecs({ filePath, appId, appName }), appName);
         return null;
       }
+      if (process.platform === 'linux') {
+        runSpecChain(buildLinuxOpenFileSpecs({ filePath, appId, appName }), appName);
+        return null;
+      }
       if (process.platform !== 'darwin') {
-        throw new Error('desktop_open_file_in_app is only supported on macOS and Windows');
+        throw new Error('desktop_open_file_in_app is only supported on macOS, Windows, and Linux');
       }
       runSpecChain(buildOpenFileSpecs({ filePath, appId, appName }), appName);
       return null;
@@ -3366,8 +3419,11 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       if (process.platform === 'win32') {
         return (await buildWindowsInstalledApps(args.apps)).map((app) => app.name);
       }
+      if (process.platform === 'linux') {
+        return (await buildLinuxInstalledApps(args.apps)).map((app) => app.name);
+      }
       if (process.platform !== 'darwin') {
-        throw new Error('desktop_filter_installed_apps is only supported on macOS');
+        throw new Error('desktop_filter_installed_apps is only supported on macOS, Windows, and Linux');
       }
       if (!Array.isArray(args.apps)) return [];
       const results = await Promise.all(
