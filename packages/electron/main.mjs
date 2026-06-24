@@ -2492,6 +2492,8 @@ const setupAutoUpdater = () => {
   if (!app.isPackaged) {
     return;
   }
+  // Route B fork: disable auto-update since there's no published release
+  return;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
@@ -3423,7 +3425,8 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         emitToAllWindows('openchamber:installed-apps-updated', apps);
       };
       if (process.platform !== 'darwin' && process.platform !== 'win32') {
-        throw new Error('desktop_get_installed_apps is only supported on macOS and Windows');
+        // desktop_get_installed_apps is unsupported on Linux; return empty
+        return { apps: [], hasCache: false, isCacheStale: false };
       }
       if (!hasCache || isCacheStale || args.force === true) {
         void refresh();
