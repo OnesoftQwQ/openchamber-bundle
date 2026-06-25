@@ -87,7 +87,7 @@ export const createStartupPipelineRuntime = (dependencies) => {
 
     setupProxy(app);
     scheduleOpenCodeApiDetection();
-    void bootstrapOpenCodeAtStartup();
+    await bootstrapOpenCodeAtStartup();
 
     if (apiOnly) {
       staticRoutesRuntime.registerApiOnlyFallbackRoutes(app);
