@@ -11,3 +11,5 @@ resources/sidecar/
 
 # OS-specific
 .DS_Store
+resources/opencode-binary/opencode
+resources/opencode-binary/version.txt
