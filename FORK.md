@@ -33,6 +33,20 @@
 | `env-runtime.js` | 1088 | ~60 | 去掉 shell 快照、WSL 检测、node/bun 二进制查找、shebang 读取，只留 git 解析 |
 | `shutdown-runtime.js` | 147 | ~80 | 去掉 `killProcessOnPort`、`waitForPortRelease` |
 
+### UI 本地化
+
+| 改动 | 说明 |
+|------|------|
+| `WorkingPlaceholder.tsx` | 新增 `STATUS_TRANSLATIONS_ZH` 映射表，35 条 assistant streaming 状态文字支持中文。当浏览器语言以 `zh` 开头时显示中文状态（思考中、读取文件、执行命令等），否则保持英文。通过 `navigator.language` 检测，不走 i18n 系统。 |
+
+### Bug 修复
+
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| 首次打开提示配置 OpenCode | `bootstrapOpenCodeAtStartup()` 是 `void` 异步，UI 加载时 opencode 未就绪 | 改为 `await`，等 opencode 启动完成后再服务 UI |
+| Health check 因密码不匹配失败 401 | lifecycle 生成密码后未同步到 auth state | 调 `ensureLocalOpenCodeServerPassword()` 同步 |
+| KIO 无法读取 `openchamber-ui://app/` | 自定义协议处理在 KDE Wayland 下失效 | 禁用自定义协议，始终走 HTTP |
+
 ### 新增文件
 
 - `scripts/download-opencode-binary.mjs` — 构建时从 GitHub releases 下载 opencode CLI
