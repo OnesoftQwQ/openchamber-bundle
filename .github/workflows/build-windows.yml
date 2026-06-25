@@ -59,7 +59,7 @@ jobs:
       - name: Build installer
         run: |
           cd packages/electron
-          bun x electron-builder --win ${{ inputs.arch == 'arm64' && '--arm64' || '' }}
+          bun x electron-builder --publish=never --win ${{ inputs.arch == 'arm64' && '--arm64' || '' }}
         shell: bash
 
       - name: Upload artifact

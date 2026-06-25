@@ -64,7 +64,7 @@ jobs:
       - name: Build ${{ inputs.package_format }}
         run: |
           cd packages/electron
-          bun x electron-builder --linux ${{ inputs.package_format }}
+          bun x electron-builder --publish=never --linux ${{ inputs.package_format }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

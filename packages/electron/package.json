@@ -139,11 +139,6 @@
           "path": "/Applications"
         }
       ]
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "openchamber",
-      "repo": "openchamber"
     }
   }
 }

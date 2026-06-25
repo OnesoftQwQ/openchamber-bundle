@@ -58,7 +58,7 @@ jobs:
       - name: Build DMG
         run: |
           cd packages/electron
-          bun x electron-builder --mac ${{ inputs.arch == 'arm64' && '--arm64' || '' }}
+          bun x electron-builder --publish=never --mac ${{ inputs.arch == 'arm64' && '--arm64' || '' }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
