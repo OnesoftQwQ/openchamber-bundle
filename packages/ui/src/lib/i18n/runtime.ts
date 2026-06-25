@@ -96,5 +96,10 @@ export function detectInitialLocale(): Locale {
     return stored;
   }
 
+  // Auto-detect from browser/OS language on first launch
+  if (typeof navigator !== 'undefined' && navigator.language) {
+    return normalizeLocale(navigator.language);
+  }
+
   return DEFAULT_LOCALE;
 }
