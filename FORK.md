@@ -36,7 +36,60 @@
 ### 新增文件
 
 - `scripts/download-opencode-binary.mjs` — 构建时从 GitHub releases 下载 opencode CLI
+- `.github/workflows/build-linux.yml` — Linux 手动构建（支持 rpm/deb 选择）
+- `.github/workflows/build-windows.yml` — Windows 手动构建
+- `.github/workflows/build-macos.yml` — macOS 手动构建
 - `FORK.md` — 本文件
+
+### 删除的文件
+
+- `.github/workflows/` 中的 11 个上游 workflows — 全部删除，替换为上述 3 个手动触发的工作流
+
+## GitHub Actions 工作流
+
+所有构建均为手动触发（`workflow_dispatch`），构建产物上传为 Actions Artifact。
+
+### build-linux.yml
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `package_format` | rpm 或 deb | rpm |
+| `opencode_version` | opencode CLI 版本号（如 v1.17.10）或 latest | latest |
+
+运行环境：`ubuntu-latest`。安装 ruby + fpm 用于 RPM 打包。
+
+### build-windows.yml
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `arch` | x64 或 arm64 | x64 |
+| `opencode_version` | opencode CLI 版本号或 latest | latest |
+
+运行环境：`windows-latest`。
+
+### build-macos.yml
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `arch` | x64 或 arm64 | arm64 |
+| `opencode_version` | opencode CLI 版本号或 latest | latest |
+
+运行环境：`macos-latest`（arm64）或 `macos-13`（x64）。
+
+### 构建流程
+
+所有三个工作流执行相同的步骤序列：
+
+```mermaid
+graph LR
+  A[Checkout] --> B[Setup Node/Bun]
+  B --> C[bun install]
+  C --> D[Download opencode binary]
+  D --> E[Build web assets Vite]
+  E --> F[Bundle main.mjs]
+  F --> G[electron-builder]
+  G --> H[Upload artifact]
+```
 
 ## 同步策略
 

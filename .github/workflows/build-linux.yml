@@ -1,0 +1,76 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_format:
+        description: 'Package format'
+        required: true
+        default: rpm
+        type: choice
+        options:
+          - rpm
+          - deb
+      opencode_version:
+        description: 'OpenCode CLI version (e.g. v1.17.10, or "latest")'
+        required: false
+        default: latest
+        type: string
+
+env:
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "22"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ruby ruby-dev rubygems rpm fakeroot
+          sudo gem install fpm -v 1.15.1 --no-document
+
+      - name: Install project deps
+        run: bun install --frozen-lockfile
+
+      - name: Download opencode binary
+        run: |
+          cd packages/electron
+          if [ "${{ inputs.opencode_version }}" != "latest" ] && [ -n "${{ inputs.opencode_version }}" ]; then
+            node ../../scripts/download-opencode-binary.mjs --version ${{ inputs.opencode_version }}
+          else
+            bun run download:opencode
+          fi
+
+      - name: Build web assets
+        run: cd packages/electron && bun run build:web-assets
+
+      - name: Bundle main
+        run: cd packages/electron && bun run bundle:main
+
+      - name: Build ${{ inputs.package_format }}
+        run: |
+          cd packages/electron
+          ./node_modules/.bin/electron-builder --linux ${{ inputs.package_format }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenChamber-linux-x64
+          path: |
+            packages/electron/dist/OpenChamber-*-linux-x86_64.rpm
+            packages/electron/dist/OpenChamber-*-linux-amd64.deb
+            packages/electron/dist/OpenChamber-*-linux-*.tar.gz
