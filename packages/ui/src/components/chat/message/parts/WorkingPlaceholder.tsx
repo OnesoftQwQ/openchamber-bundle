@@ -1,6 +1,47 @@
 import React from 'react';
 import { BusyDots } from './BusyDots';
 
+// Status text translations for assistant streaming hints.
+// Falls back to English capitalized when no translation is registered.
+const STATUS_TRANSLATIONS_ZH: Record<string, string> = {
+  thinking: '思考中',
+  composing: '生成中',
+  'reading file': '读取文件',
+  'writing file': '写入文件',
+  'editing file': '编辑文件',
+  'editing files': '编辑文件',
+  'applying patch': '应用补丁',
+  'running command': '执行命令',
+  'searching content': '搜索内容',
+  'finding files': '查找文件',
+  'listing directory': '列出目录',
+  'delegating task': '委派任务',
+  'fetching URL': '获取网址',
+  'searching web': '搜索网络',
+  'web code search': '搜索代码',
+  'updating todos': '更新待办',
+  'reading todos': '读取待办',
+  'learning skill': '学习技能',
+  'asking question': '提问中',
+  'switching to planning': '切换到规划',
+  'switching to building': '切换到构建',
+  'waiting for permission': '等待权限',
+  working: '工作中',
+  processing: '处理中',
+  preparing: '准备中',
+  'warming up': '预热中',
+  'gears turning': '处理中',
+  computing: '计算中',
+  calculating: '计算中',
+  analyzing: '分析中',
+  synthesizing: '综合中',
+  'inspecting logic': '检查逻辑',
+  'weighing options': '权衡中',
+  calibrating: '校准中',
+  'connecting dots': '关联中',
+  'wheels spinning': '处理中',
+};
+
 interface WorkingPlaceholderProps {
   isWorking: boolean;
   statusText: string | null;
@@ -211,7 +252,13 @@ export function WorkingPlaceholder({
     return null;
   }
 
-  const label = displayedText.charAt(0).toUpperCase() + displayedText.slice(1);
+  const locale = typeof navigator !== 'undefined' ? navigator.language : '';
+  const isChinese = locale.startsWith('zh');
+  const translate = (text: string): string => {
+    if (!isChinese) return text.charAt(0).toUpperCase() + text.slice(1);
+    return STATUS_TRANSLATIONS_ZH[text.toLowerCase()] || text.charAt(0).toUpperCase() + text.slice(1);
+  };
+  const label = displayedText ? translate(displayedText) : '';
 
   return (
     <div
