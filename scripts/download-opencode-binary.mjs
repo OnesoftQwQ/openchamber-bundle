@@ -152,18 +152,31 @@ const downloadAsset = async (url, destPath) => {
 const extractArchive = (archivePath, destDir, format) => {
   mkdirSync(destDir, { recursive: true });
 
+  if (process.platform === 'win32') {
+    // Windows: PowerShell Expand-Archive for zip, tar (built-in) for tar.gz
+    if (format === 'zip') {
+      const result = spawnSync('powershell', [
+        '-NoLogo', '-NoProfile', '-Command',
+        `Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force`,
+      ], { stdio: 'inherit' });
+      if (result.status !== 0) throw new Error(`Expand-Archive failed with code ${result.status}`);
+    } else {
+      const result = spawnSync('tar', ['xzf', archivePath, '-C', destDir], {
+        stdio: 'inherit',
+      });
+      if (result.status !== 0) throw new Error(`tar extraction failed with code ${result.status}`);
+    }
+    return;
+  }
+
+  // Unix: unzip for zip, tar for tar.gz
   if (format === 'zip') {
-    const result = spawnSync('unzip', ['-o', archivePath, '-d', destDir], {
-      stdio: 'inherit',
-    });
+    const result = spawnSync('unzip', ['-o', archivePath, '-d', destDir], { stdio: 'inherit' });
     if (result.status !== 0) throw new Error(`unzip failed with code ${result.status}`);
     return;
   }
 
-  // tar.gz
-  const result = spawnSync('tar', ['xzf', archivePath, '-C', destDir], {
-    stdio: 'inherit',
-  });
+  const result = spawnSync('tar', ['xzf', archivePath, '-C', destDir], { stdio: 'inherit' });
   if (result.status !== 0) throw new Error(`tar extraction failed with code ${result.status}`);
 };
 
